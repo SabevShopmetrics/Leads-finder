@@ -3,17 +3,23 @@
 
 import { mkdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import { CRITERIA } from './scorer.js';
 
 const CSV_COLUMNS = [
   { key: 'business', header: 'business' },
+  { key: 'category', header: 'category' },
   { key: 'niches', header: 'niche(s)' },
   { key: 'score', header: 'score' },
-  { key: 'scoreBreakdown', header: 'score_breakdown' },
+  { key: 'tier', header: 'tier' },
+  { key: 'tierLabel', header: 'tier_label' },
+  // One column per criterion score (1–100).
+  ...CRITERIA.map((c) => ({ key: `score_${c.key}`, header: `score_${c.key}` })),
   { key: 'hasWebsite', header: 'has_website' },
   { key: 'website', header: 'website' },
   { key: 'phone', header: 'phone' },
   { key: 'rating', header: 'rating' },
   { key: 'reviewCount', header: 'review_count' },
+  { key: 'primaryType', header: 'primary_type' },
   { key: 'mapsUri', header: 'maps_url' },
   { key: 'address', header: 'address' },
   { key: 'businessStatus', header: 'status' },

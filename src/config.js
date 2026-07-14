@@ -73,6 +73,12 @@ export async function loadConfig() {
 
   const queries = await loadQueries();
 
+  // Geographic expansion: to find MORE than the ~60/query Google cap, each
+  // query is also run per-district (e.g. "стоматолог Варна Чайка"). Districts
+  // are appended to the query text; results are deduped across everything.
+  const expandDistricts = (process.env.EXPAND_DISTRICTS ?? '1') !== '0';
+  const districts = parseList(process.env.VARNA_DISTRICTS) ?? DEFAULT_DISTRICTS;
+
   return {
     apiKey: apiKey.trim(),
     queries,
@@ -80,9 +86,39 @@ export async function loadConfig() {
     requestDelayMs: parsePositiveInt(process.env.REQUEST_DELAY_MS, 1200),
     languageCode: (process.env.LANGUAGE_CODE || 'bg').trim(),
     regionCode: (process.env.REGION_CODE || 'BG').trim(),
+    expandDistricts,
+    districts,
+    // Bias results toward the Varna area (circle around city centre).
+    locationBias: {
+      circle: {
+        center: {
+          latitude: parseFloat(process.env.VARNA_LAT) || 43.2141,
+          longitude: parseFloat(process.env.VARNA_LNG) || 27.9147,
+        },
+        radius: parsePositiveInt(process.env.VARNA_RADIUS_M, 15000),
+      },
+    },
     projectRoot,
     outputDir: resolve(projectRoot, 'output'),
   };
+}
+
+// Well-known Varna districts / landmarks used to widen coverage.
+const DEFAULT_DISTRICTS = [
+  'Гръцка махала',
+  'Чайка',
+  'Левски',
+  'Владислав Варненчик',
+  'Аспарухово',
+  'Виница',
+  'Младост',
+  'Морска градина',
+];
+
+function parseList(value) {
+  if (!value || !value.trim()) return null;
+  const items = value.split(/\s*[,;]\s*/).map((s) => s.trim()).filter(Boolean);
+  return items.length ? items : null;
 }
 
 /** Load and validate queries.json. */

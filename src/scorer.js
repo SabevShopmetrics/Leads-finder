@@ -1,109 +1,150 @@
-// Lead scoring rubric (0–10). Each business is scored on how good a prospect it
-// is for SilexBrand (websites, chatbots, CRM, automation for local SMEs).
+// Advanced lead scoring for SilexBrand.
 //
-// The idea: no website + established + reachable + high-value niche == hot lead.
+// Every business is scored 1–100 on EACH criterion below, then those are
+// combined by weight into a single 1–100 "overall" lead score and a letter
+// tier. Businesses are also categorized into a high-level industry group.
+//
+// The philosophy: a business with no website (big opportunity), that is
+// established enough to have a budget, reachable, operating, well-reviewed and
+// in a niche SilexBrand knows how to sell to == a near-100 lead.
 
-// primaryType values (Places API) considered high-value niches for SilexBrand.
-// See: https://developers.google.com/maps/documentation/places/web-service/place-types
-export const HIGH_VALUE_TYPES = new Set([
-  // Health / clinics
-  'dentist',
-  'dental_clinic',
-  'doctor',
-  'medical_lab',
-  'hospital',
-  'physiotherapist',
-  'chiropractor',
-  'veterinary_care',
-  // Real estate
-  'real_estate_agency',
-  // Hospitality
-  'restaurant',
-  'cafe',
-  'bar',
-  'lodging',
-  'hotel',
-  'motel',
-  'resort_hotel',
-  // Beauty / wellness
-  'beauty_salon',
-  'hair_salon',
-  'spa',
-  'nail_salon',
-  // Professional services
-  'lawyer',
-  'accounting',
-  'insurance_agency',
-  'car_dealer',
-  'car_repair',
-  // Fitness
-  'gym',
-  'fitness_center',
-]);
+// ── Criteria definitions (order = display order) ─────────────────────────────
+// weight values sum to 1.0. Tweak here to re-prioritize without touching logic.
+export const CRITERIA = [
+  { key: 'web_opportunity', label: 'Web Opportunity', weight: 0.32, hint: 'No / weak web presence to sell into' },
+  { key: 'budget',          label: 'Budget & Size',   weight: 0.22, hint: 'Established enough to pay (review volume)' },
+  { key: 'niche_fit',       label: 'Niche Fit',       weight: 0.16, hint: 'Category SilexBrand sells to well' },
+  { key: 'reachability',    label: 'Reachability',    weight: 0.12, hint: 'Can we actually contact them' },
+  { key: 'reputation',      label: 'Reputation',      weight: 0.10, hint: 'Rating quality (confidence-weighted)' },
+  { key: 'operational',     label: 'Operational',     weight: 0.08, hint: 'Currently open for business' },
+];
 
-/**
- * Score a single (deduped) business record.
- *
- * @param {object} biz normalized business (see collector.js normalizePlace)
- * @returns {{ score: number, breakdown: object }}
- */
-export function scoreBusiness(biz) {
-  const breakdown = {};
-  let score = 0;
+// ── Industry categorization by Google primaryType ────────────────────────────
+// First matching group wins (order matters where types overlap).
+const CATEGORY_MAP = [
+  ['Health',                ['dentist', 'dental_clinic', 'doctor', 'hospital', 'medical_lab', 'physiotherapist', 'chiropractor', 'veterinary_care', 'pharmacy', 'drugstore']],
+  ['Real Estate',           ['real_estate_agency']],
+  ['Hospitality',           ['restaurant', 'cafe', 'bar', 'bakery', 'meal_takeaway', 'meal_delivery', 'lodging', 'hotel', 'motel', 'resort_hotel', 'guest_house', 'bed_and_breakfast']],
+  ['Beauty & Wellness',     ['beauty_salon', 'hair_salon', 'spa', 'nail_salon', 'barber_shop', 'wellness_center']],
+  ['Professional Services', ['lawyer', 'accounting', 'insurance_agency', 'consultant', 'notary_public']],
+  ['Automotive',            ['car_dealer', 'car_repair', 'car_wash', 'auto_parts_store']],
+  ['Fitness',               ['gym', 'fitness_center', 'sports_club']],
+  ['Retail',                ['store', 'clothing_store', 'furniture_store', 'jewelry_store', 'shoe_store', 'electronics_store']],
+  ['Education',             ['school', 'primary_school', 'secondary_school', 'university', 'language_school']],
+];
 
-  const add = (label, points) => {
-    breakdown[label] = points;
-    score += points;
-  };
+// primaryType values that are a strong fit for SilexBrand's offering.
+export const HIGH_VALUE_TYPES = new Set(
+  CATEGORY_MAP.filter(([group]) =>
+    ['Health', 'Real Estate', 'Hospitality', 'Beauty & Wellness', 'Professional Services', 'Automotive', 'Fitness'].includes(group)
+  ).flatMap(([, types]) => types)
+);
 
-  const hasWebsite = Boolean(biz.website);
-  const reviewCount = Number.isFinite(biz.reviewCount) ? biz.reviewCount : 0;
-  const rating = Number.isFinite(biz.rating) ? biz.rating : 0;
+const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
+const round = (n) => Math.round(n);
 
-  // No website at all → the core opportunity for a web agency.
-  if (!hasWebsite) {
-    add('no_website', 3);
-  } else {
-    add('has_website', 0);
+/** Map a Google primaryType to a high-level industry category. */
+export function categorize(primaryType) {
+  if (!primaryType) return 'Other';
+  for (const [group, types] of CATEGORY_MAP) {
+    if (types.includes(primaryType)) return group;
   }
-
-  // Established enough to have a budget.
-  if (reviewCount >= 20) {
-    add('established_20plus_reviews', 2);
-  }
-
-  // Premium signal: well-rated AND enough reviews to trust the rating.
-  if (rating >= 4.0 && reviewCount >= 20) {
-    add('premium_rating', 1);
-  }
-
-  // Reachable by phone (local number).
-  if (biz.phone) {
-    add('has_phone', 1);
-  }
-
-  // Currently operating.
-  if (biz.businessStatus === 'OPERATIONAL') {
-    add('operational', 1);
-  }
-
-  // High-value niche by Google primaryType.
-  if (biz.primaryType && HIGH_VALUE_TYPES.has(biz.primaryType)) {
-    add('high_value_type', 2);
-  }
-
-  // Cap at 10.
-  if (score > 10) {
-    breakdown._capped_from = score;
-    score = 10;
-  }
-
-  return { score, breakdown };
+  return 'Other';
 }
 
-/** Render the breakdown object into a compact human-readable string. */
-export function formatBreakdown(breakdown) {
-  return Object.entries(breakdown)
-    .map(([label, pts]) => `${label}:${pts >= 0 ? '+' : ''}${pts}`)
-    .join(' ');
+// ── Per-criterion scorers (each returns 1–100) ───────────────────────────────
+
+// The core opportunity: no site == maximum, a site still leaves chatbot/CRM/
+// automation upsell but is a lower-priority lead.
+function webOpportunityScore(biz) {
+  return biz.website ? 45 : 100;
+}
+
+// Budget proxy from review volume (log scale: reviews correlate with size/spend).
+function budgetScore(biz) {
+  const rc = Number.isFinite(biz.reviewCount) ? biz.reviewCount : 0;
+  if (rc <= 0) return 15; // no track record yet
+  // rc=1→~30, 20→~64, 100→~86, 500→capped 100
+  return clamp(round(20 + 33 * Math.log10(rc + 1)), 1, 100);
+}
+
+// Category fit for SilexBrand's sales motion.
+function nicheFitScore(biz) {
+  if (biz.primaryType && HIGH_VALUE_TYPES.has(biz.primaryType)) return 100;
+  if (biz.primaryType) return 55;
+  return 40;
+}
+
+// How contactable the lead is.
+function reachabilityScore(biz) {
+  if (biz.phone) return 100; // national phone
+  if (biz.internationalPhone) return 75;
+  if (biz.website) return 55; // at least a contact form somewhere
+  return 20;
+}
+
+// Rating quality, pulled toward a neutral 50 when few reviews back it up.
+function reputationScore(biz) {
+  const rating = Number.isFinite(biz.rating) ? biz.rating : null;
+  if (rating == null) return 30;
+  const rc = Number.isFinite(biz.reviewCount) ? biz.reviewCount : 0;
+  const base = clamp((rating - 2.5) / 2.5, 0, 1) * 100; // 2.5→0, 4.0→60, 5.0→100
+  const confidence = clamp(rc / 50, 0, 1); // full confidence by ~50 reviews
+  return clamp(round(50 + (base - 50) * confidence), 1, 100);
+}
+
+// Is the business actually open?
+function operationalScore(biz) {
+  switch (biz.businessStatus) {
+    case 'OPERATIONAL': return 100;
+    case 'CLOSED_TEMPORARILY': return 45;
+    case 'CLOSED_PERMANENTLY': return 5;
+    default: return 60; // unknown
+  }
+}
+
+const SCORERS = {
+  web_opportunity: webOpportunityScore,
+  budget: budgetScore,
+  niche_fit: nicheFitScore,
+  reachability: reachabilityScore,
+  reputation: reputationScore,
+  operational: operationalScore,
+};
+
+/** Letter tier + human label from the overall 1–100 score. */
+export function tierFor(overall) {
+  if (overall >= 80) return { tier: 'A', label: 'Hot' };
+  if (overall >= 65) return { tier: 'B', label: 'Warm' };
+  if (overall >= 50) return { tier: 'C', label: 'Nurture' };
+  return { tier: 'D', label: 'Cold' };
+}
+
+/**
+ * Score one normalized business.
+ * @returns {{ overall:number, tier:string, tierLabel:string, category:string,
+ *             criteria: Record<string, number> }}
+ */
+export function scoreBusiness(biz) {
+  const criteria = {};
+  let weighted = 0;
+  for (const { key, weight } of CRITERIA) {
+    const s = clamp(round(SCORERS[key](biz)), 1, 100);
+    criteria[key] = s;
+    weighted += s * weight;
+  }
+  const overall = clamp(round(weighted), 1, 100);
+  const { tier, label } = tierFor(overall);
+  return {
+    overall,
+    tier,
+    tierLabel: label,
+    category: categorize(biz.primaryType),
+    criteria,
+  };
+}
+
+/** Compact "web_opportunity:100 budget:86 …" string for CSV readability. */
+export function formatCriteria(criteria) {
+  return CRITERIA.map(({ key }) => `${key}:${criteria[key]}`).join(' ');
 }

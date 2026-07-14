@@ -103,7 +103,8 @@ function truncate(s, n) {
  * @returns {Promise<Array>} raw place objects from the API (may be empty)
  */
 export async function textSearch(query, config) {
-  const { apiKey, maxResultsPerQuery, requestDelayMs, languageCode, regionCode } = config;
+  const { apiKey, maxResultsPerQuery, requestDelayMs, languageCode, regionCode, locationBias } =
+    config;
   const results = [];
   let pageToken;
   let page = 0;
@@ -117,6 +118,7 @@ export async function textSearch(query, config) {
       // Google caps pageSize at 20 for Text Search.
       pageSize: 20,
     };
+    if (locationBias) body.locationBias = locationBias;
     if (pageToken) body.pageToken = pageToken;
 
     const data = await postSearchText(body, { apiKey, baseDelayMs: requestDelayMs });
