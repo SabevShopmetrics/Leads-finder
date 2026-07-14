@@ -1,0 +1,14 @@
+[
+  { "niche": "dental",         "query": "стоматолог Варна" },
+  { "niche": "dental",         "query": "дентална клиника Варна" },
+  { "niche": "real_estate",    "query": "агенция за недвижими имоти Варна" },
+  { "niche": "restaurant",     "query": "ресторант Варна" },
+  { "niche": "lodging",        "query": "хотел Варна" },
+  { "niche": "beauty",         "query": "козметичен салон Варна" },
+  { "niche": "beauty",         "query": "фризьорски салон Варна" },
+  { "niche": "legal",          "query": "адвокат Варна" },
+  { "niche": "accounting",     "query": "счетоводна кантора Варна" },
+  { "niche": "auto_service",   "query": "автосервиз Варна" },
+  { "niche": "fitness",        "query": "фитнес Варна" },
+  { "niche": "medical",        "query": "медицински център Варна" }
+]
