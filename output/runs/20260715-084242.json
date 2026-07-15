@@ -1,0 +1,59 @@
+{
+  "id": "20260715-084242",
+  "generatedAt": "2026-07-15 05:42 UTC",
+  "depth": "short",
+  "summary": {
+    "rawCount": 0,
+    "unique": 0,
+    "noWebsite": 0,
+    "hot": 0,
+    "avg": 0,
+    "byTier": {},
+    "byCategory": {},
+    "criteria": [
+      {
+        "key": "web_opportunity",
+        "label": "Web Opportunity",
+        "weight": 0.32,
+        "hint": "No / weak web presence to sell into"
+      },
+      {
+        "key": "budget",
+        "label": "Budget & Size",
+        "weight": 0.22,
+        "hint": "Established enough to pay (review volume)"
+      },
+      {
+        "key": "niche_fit",
+        "label": "Niche Fit",
+        "weight": 0.16,
+        "hint": "Category SilexBrand sells to well"
+      },
+      {
+        "key": "reachability",
+        "label": "Reachability",
+        "weight": 0.12,
+        "hint": "Can we actually contact them"
+      },
+      {
+        "key": "reputation",
+        "label": "Reputation",
+        "weight": 0.1,
+        "hint": "Rating quality (confidence-weighted)"
+      },
+      {
+        "key": "operational",
+        "label": "Operational",
+        "weight": 0.08,
+        "hint": "Currently open for business"
+      }
+    ],
+    "searches": 12,
+    "depth": "short",
+    "depthDescription": "city-wide only, 1 page/query — fast pulse-check",
+    "partial": true,
+    "stopReason": "stopped early: Google Places daily quota exhausted",
+    "generatedAt": "2026-07-15 05:42 UTC"
+  },
+  "rows": []
+}

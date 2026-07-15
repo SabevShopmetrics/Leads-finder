@@ -6,7 +6,6 @@ node_modules/
 npm-debug.log*
 
 # Generated lead lists
-/output/
 
 # OS / editor
 .DS_Store
