@@ -56,6 +56,62 @@ function parsePositiveInt(value, fallback) {
   return Number.isFinite(n) && n > 0 ? n : fallback;
 }
 
+// ── Research depth presets ────────────────────────────────────────────────
+// Controls how wide/thorough a run is: how many districts each query is
+// repeated against and how many results per search we're willing to pull.
+// "short" is fast/cheap (quick pulse-check); "deep" casts the widest net to
+// surface more long-tail leads. Explicit env vars (EXPAND_DISTRICTS,
+// MAX_RESULTS_PER_QUERY, VARNA_DISTRICTS) always override the preset.
+export const RESEARCH_DEPTHS = ['short', 'medium', 'deep'];
+const DEFAULT_DEPTH = 'medium';
+
+// Extra neighborhoods layered on for "deep" runs, on top of DEFAULT_DISTRICTS.
+const EXTRA_DEEP_DISTRICTS = ['Галата', 'Победа', 'Възраждане', 'Изгрев'];
+
+function depthPresets(defaultDistricts) {
+  return {
+    short: {
+      expandDistricts: false,
+      maxResultsPerQuery: 20,
+      districts: [],
+      description: 'city-wide only, 1 page/query — fast pulse-check',
+    },
+    medium: {
+      expandDistricts: true,
+      maxResultsPerQuery: 60,
+      districts: defaultDistricts,
+      description: `city-wide + ${defaultDistricts.length} districts — balanced default`,
+    },
+    deep: {
+      expandDistricts: true,
+      maxResultsPerQuery: 60,
+      districts: [...defaultDistricts, ...EXTRA_DEEP_DISTRICTS],
+      description: `city-wide + ${defaultDistricts.length + EXTRA_DEEP_DISTRICTS.length} districts — widest net`,
+    },
+  };
+}
+
+/** Read a requested depth from `--depth=X` / `--depth X` / a bare "short|medium|deep" arg. */
+function parseDepthFromArgv(argv) {
+  for (let i = 0; i < argv.length; i += 1) {
+    const arg = argv[i];
+    const eq = /^--depth=(.+)$/.exec(arg);
+    if (eq) return eq[1].trim().toLowerCase();
+    if (arg === '--depth' && argv[i + 1]) return argv[i + 1].trim().toLowerCase();
+    if (RESEARCH_DEPTHS.includes(arg.toLowerCase())) return arg.toLowerCase();
+  }
+  return null;
+}
+
+function resolveDepth(argv, envDepth) {
+  const requested = (parseDepthFromArgv(argv) || envDepth || '').trim().toLowerCase();
+  if (!requested) return DEFAULT_DEPTH;
+  if (RESEARCH_DEPTHS.includes(requested)) return requested;
+  console.warn(`  ! Unknown research depth "${requested}"; falling back to "${DEFAULT_DEPTH}". ` +
+    `Valid values: ${RESEARCH_DEPTHS.join(', ')}.`);
+  return DEFAULT_DEPTH;
+}
+
 /**
  * Build the full configuration object used by the rest of the app.
  * Throws a clear, actionable error when the API key is missing.
@@ -73,16 +129,28 @@ export async function loadConfig() {
 
   const queries = await loadQueries();
 
+  const depth = resolveDepth(process.argv.slice(2), process.env.RESEARCH_DEPTH);
+  const preset = depthPresets(DEFAULT_DISTRICTS)[depth];
+
   // Geographic expansion: to find MORE than the ~60/query Google cap, each
   // query is also run per-district (e.g. "стоматолог Варна Чайка"). Districts
   // are appended to the query text; results are deduped across everything.
-  const expandDistricts = (process.env.EXPAND_DISTRICTS ?? '1') !== '0';
-  const districts = parseList(process.env.VARNA_DISTRICTS) ?? DEFAULT_DISTRICTS;
+  // Explicit env vars win over the depth preset.
+  const expandDistricts =
+    process.env.EXPAND_DISTRICTS !== undefined
+      ? process.env.EXPAND_DISTRICTS !== '0'
+      : preset.expandDistricts;
+  const districts = parseList(process.env.VARNA_DISTRICTS) ?? preset.districts;
 
   return {
     apiKey: apiKey.trim(),
     queries,
-    maxResultsPerQuery: parsePositiveInt(process.env.MAX_RESULTS_PER_QUERY, 60),
+    depth,
+    depthDescription: preset.description,
+    maxResultsPerQuery:
+      process.env.MAX_RESULTS_PER_QUERY !== undefined
+        ? parsePositiveInt(process.env.MAX_RESULTS_PER_QUERY, preset.maxResultsPerQuery)
+        : preset.maxResultsPerQuery,
     requestDelayMs: parsePositiveInt(process.env.REQUEST_DELAY_MS, 1200),
     languageCode: (process.env.LANGUAGE_CODE || 'bg').trim(),
     regionCode: (process.env.REGION_CODE || 'BG').trim(),

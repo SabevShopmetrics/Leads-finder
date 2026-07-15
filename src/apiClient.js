@@ -60,8 +60,19 @@ async function postSearchText(body, { apiKey, maxRetries = 4, baseDelayMs = 1000
       return res.json();
     }
 
-    const retryable = res.status === 429 || res.status >= 500;
     const errText = await safeReadText(res);
+
+    // A *daily* quota exhaustion (e.g. "SearchTextRequest per day") won't
+    // recover within seconds/minutes — retrying just burns time. Fail fast
+    // with a marked error so the caller can stop the whole run instead of
+    // hammering every remaining query for the same guaranteed failure.
+    if (res.status === 429 && /per\s*day/i.test(errText)) {
+      const quotaErr = new Error(`Places API daily quota exhausted: ${truncate(errText, 400)}`);
+      quotaErr.quotaExhausted = true;
+      throw quotaErr;
+    }
+
+    const retryable = res.status === 429 || res.status >= 500;
 
     if (retryable && attempt <= maxRetries) {
       const wait = backoff(baseDelayMs, attempt);

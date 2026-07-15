@@ -69,21 +69,49 @@ label; `query` is the free-text sent to Google. Add or remove entries freely:
 ## Run
 
 ```bash
-npm start
-# or
-node src/index.js
+npm start          # medium depth (default)
+npm run scout:short   # quick pulse-check
+npm run scout:medium  # balanced default
+npm run scout:deep    # widest net
 ```
 
-Each run writes three files to `output/`, all sorted by score (highest first):
+### Research depth
 
-- **`dashboard.html`** — a beautiful, self-contained dashboard. Double-click to
-  open in any browser (no server needed — data is inlined). KPI cards, live
-  search, filter by niche / website / min-score, and click any column header to
-  re-sort. Score badges are colour-coded: red = hot (7+), amber = warm (4–6),
-  grey = cold.
+Every run searches at one of three depths, controlling how wide a net is cast
+across Varna. Pick with `--depth=short|medium|deep`, a bare positional arg
+(`node src/index.js deep`), or the `RESEARCH_DEPTH` env var:
+
+| Depth | Coverage | Cap per search | Good for |
+| --- | --- | --- | --- |
+| `short` | City-wide only, no district expansion | 20 | Fast pulse-check |
+| `medium` (default) | City-wide + 8 districts | 60 | Balanced day-to-day run |
+| `deep` | City-wide + 12 districts (adds Галата, Победа, Възраждане, Изгрев) | 60 | Widest net, more long-tail leads |
+
+Explicit env vars (`EXPAND_DISTRICTS`, `MAX_RESULTS_PER_QUERY`, `VARNA_DISTRICTS`)
+still override the preset if you need finer control.
+
+### Output & the dashboard as your home base
+
+Each run writes to `output/`, all sorted by score (highest first):
+
+- **`dashboard.html`** — the main place to review and revisit results. A
+  self-contained, double-click-to-open file (no server needed — data is
+  inlined). It's more than a single report:
+  - **Saved runs** — every run is also archived to `output/runs/<timestamp>.json`
+    and never overwritten. The dashboard embeds the most recent runs (newest
+    first) in a "Saved run" dropdown at the top, so you can flip between past
+    scans — by depth, by date — without re-running anything.
+  - **Ordered & categorized** — sorted by score by default (click any column
+    to re-sort); tick **Group by category** to view leads bucketed by industry
+    (Health, Real Estate, Hospitality, …), each bucket still ranked by score.
+  - KPI cards, live search, and filters by category / niche / tier / website /
+    min-score. Score badges are colour-coded by tier: green = A/Hot, amber =
+    B/Warm, blue = C/Nurture, grey = D/Cold.
 - **`leads.csv`** — written with a UTF-8 BOM so Cyrillic opens cleanly in Excel.
 - **`leads.json`** — full structured data, including the machine-readable score
   breakdown per business.
+- **`runs/<timestamp>.json`** — permanent snapshot of every run (rows + summary),
+  what the dashboard's saved-run switcher reads from.
 
 ## CSV columns
 
@@ -113,7 +141,10 @@ Total is **capped at 10**. The exact breakdown is saved per row in
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `GOOGLE_PLACES_API_KEY` | — | **Required.** Your Places API (New) key. |
-| `MAX_RESULTS_PER_QUERY` | `60` | Cap per query (Google returns 20/page). |
+| `RESEARCH_DEPTH` | `medium` | `short` \| `medium` \| `deep` — see [Research depth](#research-depth). Same as `--depth`. |
+| `MAX_RESULTS_PER_QUERY` | preset by depth | Cap per query (Google returns 20/page). Overrides the depth preset. |
+| `EXPAND_DISTRICTS` | preset by depth | `0` to disable per-district expansion. Overrides the depth preset. |
+| `VARNA_DISTRICTS` | preset by depth | Comma-separated district list. Overrides the depth preset. |
 | `REQUEST_DELAY_MS` | `1200` | Delay between API calls (rate-limiting). |
 | `LANGUAGE_CODE` | `bg` | Result language. |
 | `REGION_CODE` | `BG` | Region bias. |
@@ -122,11 +153,12 @@ Total is **capped at 10**. The exact breakdown is saved per row in
 
 ```
 src/
-  config.js      # load .env key + queries.json (validation)
+  config.js      # load .env key + queries.json + research-depth presets
   apiClient.js   # Places v1 Text Search: fieldmask, pagination, retry/backoff
   collector.js   # normalize raw places + dedupe by id (merge niches)
-  scorer.js      # the 0–10 scoring rubric
+  scorer.js      # the 1–100 weighted scoring rubric + tiers
   writer.js      # CSV (manual, RFC-4180) + JSON writers
+  history.js     # saves every run to output/runs/, reloads recent runs
   dashboard.js   # self-contained HTML dashboard generator (data inlined)
   index.js       # CLI orchestration + summary
 queries.json     # your search terms

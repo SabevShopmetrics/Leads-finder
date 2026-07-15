@@ -12,7 +12,10 @@
   },
   "scripts": {
     "start": "node src/index.js",
-    "scout": "node src/index.js"
+    "scout": "node src/index.js",
+    "scout:short": "node src/index.js --depth=short",
+    "scout:medium": "node src/index.js --depth=medium",
+    "scout:deep": "node src/index.js --depth=deep"
   },
   "dependencies": {}
 }

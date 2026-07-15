@@ -1,32 +1,41 @@
 // Generates a standalone, self-contained HTML dashboard from the scored rows.
 // Data is inlined as JSON so the file opens by double-click (no server, no CORS).
 // Vanilla JS + CSS only — no dependencies, no external requests.
+//
+// The dashboard is the main place to review and save results: every run is
+// embedded as a browsable "saved run" (see history.js), the newest first, and
+// results can be viewed flat (score order) or grouped by category.
 
 import { writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
 /**
- * @param {Array}  rows    sorted output rows (same shape as leads.json)
+ * @param {Array}  rows    sorted output rows of the CURRENT run (same shape as leads.json)
  * @param {object} summary { rawCount, unique, noWebsite, hot, avg, byTier,
- *                           byCategory, criteria, searches, generatedAt }
+ *                           byCategory, criteria, searches, depth, depthDescription, generatedAt }
  * @param {string} outputDir absolute path to /output
+ * @param {Array}  [history] recent saved runs, newest first: [{ id, generatedAt, depth, summary, rows }]
+ *                            Includes the current run. Falls back to a single-entry
+ *                            history built from rows/summary when omitted.
  * @returns {Promise<string>} path to the written dashboard.html
  */
-export async function writeDashboard(rows, summary, outputDir) {
-  const html = renderHtml(rows, summary);
+export async function writeDashboard(rows, summary, outputDir, history) {
+  const html = renderHtml(rows, summary, history && history.length ? history : [
+    { id: 'current', generatedAt: summary.generatedAt, depth: summary.depth, summary, rows },
+  ]);
   const dashboardPath = resolve(outputDir, 'dashboard.html');
   await writeFile(dashboardPath, html, 'utf8');
   return dashboardPath;
 }
 
-function renderHtml(rows, summary) {
+function renderHtml(rows, summary, history) {
   // Embed data as a JS object literal (JSON is valid JS). Escape "<" so a
   // "</script>" inside any string can't break out of the tag, and escape the
   // JS-hostile line/paragraph separators (built via char codes so this source
   // file itself contains no literal separator characters).
   const LS = String.fromCharCode(0x2028);
   const PS = String.fromCharCode(0x2029);
-  const data = JSON.stringify({ rows, summary })
+  const data = JSON.stringify({ rows, summary, history })
     .replace(/</g, '\\u003c')
     .split(LS)
     .join('\\u2028')
@@ -61,7 +70,7 @@ function renderHtml(rows, summary) {
     -webkit-font-smoothing:antialiased;
   }
   .wrap { max-width:1320px; margin:0 auto; padding:32px 20px 64px; }
-  header { display:flex; align-items:center; gap:14px; margin-bottom:4px; }
+  header { display:flex; align-items:center; gap:14px; margin-bottom:4px; flex-wrap:wrap; }
   .logo {
     width:44px;height:44px;border-radius:12px;flex:0 0 auto;
     background:linear-gradient(135deg,var(--brand),var(--brand2));
@@ -72,7 +81,21 @@ function renderHtml(rows, summary) {
   .sub { color:var(--muted); font-size:13px; margin-top:2px; }
   .brandline { color:var(--brand); }
 
-  .kpis { display:grid; grid-template-columns:repeat(5,1fr); gap:14px; margin:24px 0 18px; }
+  .runbar { display:flex; flex-wrap:wrap; align-items:center; gap:10px; margin:18px 0;
+    background:var(--card); border:1px solid var(--line); border-radius:14px; padding:12px 14px; box-shadow:var(--shadow); }
+  .runbar label { color:var(--muted); font-size:12.5px; display:flex; align-items:center; gap:7px; }
+  .runbar select { background:var(--card2); color:var(--text); border:1px solid var(--line); border-radius:10px; padding:8px 10px; font-size:13.5px; outline:none; min-width:280px; }
+  .runbar select:focus { border-color:var(--brand); }
+  .depthbadge { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.4px; padding:3px 9px; border-radius:999px; }
+  .depth-short { background:rgba(91,140,255,.16); color:var(--c); }
+  .depth-medium { background:rgba(255,176,32,.16); color:var(--b); }
+  .depth-deep { background:rgba(52,211,153,.16); color:var(--a); }
+  .runbar .spacer { flex:1; }
+  .runtip { color:var(--faint); font-size:12px; }
+  .runtip code { background:var(--card2); border:1px solid var(--line); border-radius:5px; padding:1px 5px; font-size:11.5px; }
+  .partialbadge { font-size:11px; font-weight:700; padding:3px 9px; border-radius:999px; background:rgba(255,176,32,.16); color:var(--b); }
+
+  .kpis { display:grid; grid-template-columns:repeat(5,1fr); gap:14px; margin:0 0 18px; }
   @media (max-width:900px){ .kpis{ grid-template-columns:repeat(2,1fr);} }
   .kpi { background:var(--card); border:1px solid var(--line); border-radius:16px; padding:16px 18px; box-shadow:var(--shadow); position:relative; overflow:hidden; }
   .kpi .n { font-size:30px; font-weight:800; letter-spacing:-1px; }
@@ -95,7 +118,11 @@ function renderHtml(rows, summary) {
     background:var(--card2); color:var(--text); border:1px solid var(--line); border-radius:10px; padding:9px 12px; font-size:14px; outline:none; }
   .controls input[type=search]{ min-width:200px; flex:1; }
   .controls input[type=search]:focus, .controls select:focus{ border-color:var(--brand); }
-  .controls label{ color:var(--muted); font-size:12.5px; display:flex; align-items:center; gap:7px; }
+  .controls label{ color:var(--muted); font-size:12.5px; display:flex; align-items:center; gap:7px; white-space:nowrap; }
+  .controls .toggle{ display:flex; align-items:center; gap:7px; cursor:pointer; user-select:none; color:var(--muted); font-size:12.5px;
+    background:var(--card2); border:1px solid var(--line); border-radius:10px; padding:8px 12px; }
+  .controls .toggle input{ accent-color:var(--brand); width:14px; height:14px; }
+  .controls .toggle.on{ color:var(--text); border-color:var(--brand); }
   .controls .spacer{ flex:1; }
   .count { color:var(--faint); font-size:13px; white-space:nowrap; }
 
@@ -110,6 +137,8 @@ function renderHtml(rows, summary) {
   tbody td { padding:11px 14px; border-bottom:1px solid var(--line); vertical-align:top; }
   tbody tr:hover { background:var(--card2); }
   tbody tr:last-child td { border-bottom:none; }
+  tr.grouphead td { background:var(--card2); padding:8px 14px; font-size:11.5px; font-weight:700; text-transform:uppercase; letter-spacing:.4px; color:var(--muted); border-bottom:1px solid var(--line); }
+  tr.grouphead td span.n { color:var(--faint); font-weight:600; text-transform:none; letter-spacing:0; margin-left:6px; }
   .biz { font-weight:600; }
   .addr { color:var(--faint); font-size:12.5px; margin-top:2px; max-width:240px; }
   .niches { display:flex; flex-wrap:wrap; gap:4px; margin-top:4px; }
@@ -148,6 +177,13 @@ function renderHtml(rows, summary) {
     </div>
   </header>
 
+  <div class="runbar">
+    <label>Saved run <select id="runSelect"></select></label>
+    <span id="rundepth"></span>
+    <span class="spacer"></span>
+    <span class="runtip">New research: <code>npm run scout:short</code> · <code>scout:medium</code> · <code>scout:deep</code></span>
+  </div>
+
   <div class="kpis" id="kpis"></div>
 
   <div class="strips">
@@ -161,6 +197,7 @@ function renderHtml(rows, summary) {
     <label>Tier <select id="tier"><option value="">any</option><option value="A">A · Hot</option><option value="B">B · Warm</option><option value="C">C · Nurture</option><option value="D">D · Cold</option></select></label>
     <label>Website <select id="site"><option value="">any</option><option value="no">no site</option><option value="yes">has site</option></select></label>
     <label>Min score <select id="minscore"><option value="0">0+</option><option value="50">50+</option><option value="65">65+</option><option value="80">80+ (hot)</option></select></label>
+    <label class="toggle" id="groupToggleWrap"><input type="checkbox" id="group" /> Group by category</label>
     <span class="spacer"></span>
     <span class="count" id="count"></span>
   </div>
@@ -191,47 +228,83 @@ function renderHtml(rows, summary) {
 
 <script>
 const DATA = ${data};
-const rows = DATA.rows || [];
-const summary = DATA.summary || {};
-const CRITERIA = summary.criteria || [];
+const HISTORY = (DATA.history && DATA.history.length) ? DATA.history : [{ id:"current", generatedAt: DATA.summary.generatedAt, depth: DATA.summary.depth, summary: DATA.summary, rows: DATA.rows }];
+const CRITERIA = (DATA.summary && DATA.summary.criteria) || [];
 const tierColor = { A:getVar('--a'), B:getVar('--b'), C:getVar('--c'), D:getVar('--d') };
 const catPalette = ['#6d8bff','#34d399','#ffb020','#ff5d73','#8a6dff','#22d3ee','#f472b6','#a3e635','#fb923c','#94a3b8'];
 function getVar(v){ return getComputedStyle(document.documentElement).getPropertyValue(v).trim() || '#888'; }
 const esc = s => String(s??"").replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const escA = s => esc(s).replace(/"/g,"&quot;");
 
-// ── KPIs ──
-const kpis = [
-  { n: summary.rawCount ?? rows.length, l:"Raw results", cls:"" },
-  { n: summary.unique ?? rows.length, l:"Unique businesses", cls:"uniq" },
-  { n: summary.noWebsite ?? rows.filter(r=>r.hasWebsite==="no").length, l:"No website", cls:"nosite" },
-  { n: (summary.byTier && summary.byTier.A) ?? rows.filter(r=>r.tier==="A").length, l:"Hot leads (A)", cls:"hot" },
-  { n: (summary.avg ?? Math.round(rows.reduce((a,r)=>a+(+r.score||0),0)/(rows.length||1))) + "", l:"Avg score /100", cls:"avg" },
-];
-document.getElementById("kpis").innerHTML = kpis.map(k=>'<div class="kpi '+k.cls+'"><div class="n">'+k.n+'</div><div class="l">'+k.l+'</div></div>').join("");
-document.getElementById("genat").textContent = summary.generatedAt ? ("Generated "+summary.generatedAt+(summary.searches?(" · "+summary.searches+" searches"):"")) : "Lead intelligence dashboard";
-document.getElementById("ftotal").textContent = rows.length + " businesses scored";
+// ── active run state ──
+let rows = [];
+let summary = {};
+let catKeys = [];
+let catColor = {};
 
-// ── tier + category strips ──
+// ── saved-run selector ──
+const runSelect = document.getElementById("runSelect");
+HISTORY.forEach((h, i) => {
+  const o = document.createElement("option");
+  o.value = i;
+  const n = (h.summary && h.summary.unique) ?? (h.rows||[]).length;
+  const hot = (h.summary && h.summary.byTier && h.summary.byTier.A) || 0;
+  const partial = h.summary && h.summary.partial;
+  o.textContent = (h.generatedAt||h.id) + " · " + (h.depth||"medium") + " · " + n + " leads" + (hot ? " · " + hot + " hot" : "") + (partial ? " · ⚠ partial" : "");
+  runSelect.appendChild(o);
+});
+runSelect.addEventListener("change", () => loadRun(+runSelect.value));
+
+function loadRun(index){
+  const entry = HISTORY[index] || HISTORY[0];
+  rows = entry.rows || [];
+  summary = entry.summary || {};
+  runSelect.value = index;
+
+  document.getElementById("genat").textContent = summary.generatedAt
+    ? ("Generated " + summary.generatedAt + (summary.searches ? (" · " + summary.searches + " searches") : ""))
+    : "Lead intelligence dashboard";
+  document.getElementById("ftotal").textContent = rows.length + " businesses scored";
+  const depth = summary.depth || "medium";
+  document.getElementById("rundepth").innerHTML = '<span class="depthbadge depth-'+esc(depth)+'">'+esc(depth)+'</span>'
+    + (summary.depthDescription ? ' <span class="runtip">'+esc(summary.depthDescription)+'</span>' : '')
+    + (summary.partial ? ' <span class="partialbadge" title="'+escA(summary.stopReason||"")+'">⚠ partial</span>' : '');
+
+  // ── KPIs ──
+  const kpis = [
+    { n: summary.rawCount ?? rows.length, l:"Raw results", cls:"" },
+    { n: summary.unique ?? rows.length, l:"Unique businesses", cls:"uniq" },
+    { n: summary.noWebsite ?? rows.filter(r=>r.hasWebsite==="no").length, l:"No website", cls:"nosite" },
+    { n: (summary.byTier && summary.byTier.A) ?? rows.filter(r=>r.tier==="A").length, l:"Hot leads (A)", cls:"hot" },
+    { n: (summary.avg ?? Math.round(rows.reduce((a,r)=>a+(+r.score||0),0)/(rows.length||1))) + "", l:"Avg score /100", cls:"avg" },
+  ];
+  document.getElementById("kpis").innerHTML = kpis.map(k=>'<div class="kpi '+k.cls+'"><div class="n">'+k.n+'</div><div class="l">'+k.l+'</div></div>').join("");
+
+  // ── tier + category strips ──
+  const tierCounts = summary.byTier || tallyBy(rows, r=>r.tier);
+  const tierLabels = { A:"A · Hot", B:"B · Warm", C:"C · Nurture", D:"D · Cold" };
+  renderSeg("tierbar","tierlegend",
+    Object.fromEntries(Object.entries(tierCounts).map(([k,v])=>[tierLabels[k]||k,v])),
+    lbl=>tierColor[(lbl+"")[0]]||"#888", ["A · Hot","B · Warm","C · Nurture","D · Cold"]);
+  const catCounts = summary.byCategory || tallyBy(rows, r=>r.category);
+  catKeys = Object.keys(catCounts).sort((a,b)=>catCounts[b]-catCounts[a]);
+  catColor = Object.fromEntries(catKeys.map((c,i)=>[c, catPalette[i%catPalette.length]]));
+  renderSeg("catbar","catlegend", catCounts, c=>catColor[c]||"#888", catKeys);
+
+  // ── category filter options ──
+  const catSel = document.getElementById("cat");
+  catSel.innerHTML = '<option value="">All categories</option>';
+  catKeys.slice().sort().forEach(c=>{ const o=document.createElement("option"); o.value=o.textContent=c; catSel.appendChild(o); });
+
+  render();
+}
+
 function renderSeg(barId, legendId, counts, colorFn, order){
   const entries = (order || Object.keys(counts)).filter(k=>counts[k]).map(k=>[k,counts[k]]);
   const total = entries.reduce((a,[,n])=>a+n,0) || 1;
   document.getElementById(barId).innerHTML = entries.map(([k,n])=>'<span style="width:'+(100*n/total)+'%;background:'+colorFn(k)+'"></span>').join("");
   document.getElementById(legendId).innerHTML = entries.map(([k,n])=>'<span><span class="dot" style="background:'+colorFn(k)+'"></span>'+esc(k)+' · '+n+'</span>').join("");
 }
-const tierCounts = summary.byTier || tallyBy(rows, r=>r.tier);
-const tierLabels = { A:"A · Hot", B:"B · Warm", C:"C · Nurture", D:"D · Cold" };
-renderSeg("tierbar","tierlegend",
-  Object.fromEntries(Object.entries(tierCounts).map(([k,v])=>[tierLabels[k]||k,v])),
-  lbl=>tierColor[(lbl+"")[0]]||"#888", ["A · Hot","B · Warm","C · Nurture","D · Cold"]);
-const catCounts = summary.byCategory || tallyBy(rows, r=>r.category);
-const catKeys = Object.keys(catCounts).sort((a,b)=>catCounts[b]-catCounts[a]);
-const catColor = Object.fromEntries(catKeys.map((c,i)=>[c, catPalette[i%catPalette.length]]));
-renderSeg("catbar","catlegend", catCounts, c=>catColor[c]||"#888", catKeys);
-
-// ── filters populate ──
-const catSel = document.getElementById("cat");
-catKeys.slice().sort().forEach(c=>{ const o=document.createElement("option"); o.value=o.textContent=c; catSel.appendChild(o); });
 
 // criteria header tooltip
 document.getElementById("crithead").title = CRITERIA.map(c=>c.label+" ("+Math.round(c.weight*100)+"%)").join(" · ");
@@ -241,7 +314,34 @@ function critColor(v){ return v>=80?getVar('--a'): v>=60?getVar('--b'): v>=40?ge
 
 // ── state + render ──
 let sortKey="score", sortDir=-1;
+let groupByCategory=false;
 const NUM = new Set(["score","rating","reviewCount"]);
+
+function rowHtml(r){
+  const s=+r.score||0, tier=r.tier||"D";
+  const crit = CRITERIA.map(c=>{
+    const v = (r.criteria && r.criteria[c.key]) ?? r["score_"+c.key] ?? 0;
+    return '<div class="cell" title="'+escA(c.label)+': '+v+'/100"><div class="bar"><span style="height:'+v+'%;background:'+critColor(v)+'"></span></div><div class="v">'+v+'</div><div class="k">'+esc(c.key.slice(0,4))+'</div></div>';
+  }).join("");
+  const tags = String(r.niches||"").split(/;\\s*/).filter(Boolean).map(n=>'<span class="tag">'+esc(n)+'</span>').join("");
+  const site = r.hasWebsite==="yes" ? '<a class="link" href="'+escA(r.website)+'" target="_blank" rel="noopener">visit ↗</a>' : '<span class="pill no">no site</span>';
+  const rating = (r.rating!=="" && r.rating!=null) ? '<span class="rating"><span class="star">★</span> '+esc(r.rating)+'</span>' : '<span style="color:var(--faint)">—</span>';
+  const reviews = (r.reviewCount!=="" && r.reviewCount!=null) ? esc(r.reviewCount) : '<span style="color:var(--faint)">—</span>';
+  const phone = r.phone ? esc(r.phone) : '<span style="color:var(--faint)">—</span>';
+  const map = r.mapsUri ? '<a class="link" href="'+escA(r.mapsUri)+'" target="_blank" rel="noopener">open ↗</a>' : "—";
+  return '<tr>'
+    + '<td><div class="score t-'+tier+'">'+s+'</div></td>'
+    + '<td><div class="biz">'+esc(r.business||"(unnamed)")+'</div>'+(r.address?'<div class="addr">'+esc(r.address)+'</div>':'')+(tags?'<div class="niches">'+tags+'</div>':'')+'</td>'
+    + '<td><span class="catpill">'+esc(r.category||"Other")+'</span></td>'
+    + '<td><span class="tierpill tp-'+tier+'">'+tier+' · '+esc(r.tierLabel||"")+'</span></td>'
+    + '<td><div class="crit">'+crit+'</div></td>'
+    + '<td>'+site+'</td><td>'+rating+'</td><td>'+reviews+'</td><td>'+phone+'</td><td>'+map+'</td>'
+    + '</tr>';
+}
+
+function groupHeadHtml(cat, n){
+  return '<tr class="grouphead"><td colspan="10"><span style="color:'+(catColor[cat]||'#888')+'">●</span> '+esc(cat)+'<span class="n">'+n+' lead'+(n===1?'':'s')+'</span></td></tr>';
+}
 
 function render(){
   const q=document.getElementById("q").value.trim().toLowerCase();
@@ -266,27 +366,17 @@ function render(){
     return (x<y?-1:x>y?1:0)*sortDir;
   });
 
-  document.getElementById("rows").innerHTML = list.map(r=>{
-    const s=+r.score||0, tier=r.tier||"D";
-    const crit = CRITERIA.map(c=>{
-      const v = (r.criteria && r.criteria[c.key]) ?? r["score_"+c.key] ?? 0;
-      return '<div class="cell" title="'+escA(c.label)+': '+v+'/100"><div class="bar"><span style="height:'+v+'%;background:'+critColor(v)+'"></span></div><div class="v">'+v+'</div><div class="k">'+esc(c.key.slice(0,4))+'</div></div>';
+  if(groupByCategory){
+    const groups=new Map();
+    for(const r of list){ const c=r.category||"Other"; if(!groups.has(c)) groups.set(c,[]); groups.get(c).push(r); }
+    const order=[...groups.keys()].sort((a,b)=>groups.get(b).length-groups.get(a).length);
+    document.getElementById("rows").innerHTML = order.map(cat=>{
+      const items=groups.get(cat);
+      return groupHeadHtml(cat, items.length) + items.map(rowHtml).join("");
     }).join("");
-    const tags = String(r.niches||"").split(/;\\s*/).filter(Boolean).map(n=>'<span class="tag">'+esc(n)+'</span>').join("");
-    const site = r.hasWebsite==="yes" ? '<a class="link" href="'+escA(r.website)+'" target="_blank" rel="noopener">visit ↗</a>' : '<span class="pill no">no site</span>';
-    const rating = (r.rating!=="" && r.rating!=null) ? '<span class="rating"><span class="star">★</span> '+esc(r.rating)+'</span>' : '<span style="color:var(--faint)">—</span>';
-    const reviews = (r.reviewCount!=="" && r.reviewCount!=null) ? esc(r.reviewCount) : '<span style="color:var(--faint)">—</span>';
-    const phone = r.phone ? esc(r.phone) : '<span style="color:var(--faint)">—</span>';
-    const map = r.mapsUri ? '<a class="link" href="'+escA(r.mapsUri)+'" target="_blank" rel="noopener">open ↗</a>' : "—";
-    return '<tr>'
-      + '<td><div class="score t-'+tier+'">'+s+'</div></td>'
-      + '<td><div class="biz">'+esc(r.business||"(unnamed)")+'</div>'+(r.address?'<div class="addr">'+esc(r.address)+'</div>':'')+(tags?'<div class="niches">'+tags+'</div>':'')+'</td>'
-      + '<td><span class="catpill">'+esc(r.category||"Other")+'</span></td>'
-      + '<td><span class="tierpill tp-'+tier+'">'+tier+' · '+esc(r.tierLabel||"")+'</span></td>'
-      + '<td><div class="crit">'+crit+'</div></td>'
-      + '<td>'+site+'</td><td>'+rating+'</td><td>'+reviews+'</td><td>'+phone+'</td><td>'+map+'</td>'
-      + '</tr>';
-  }).join("");
+  } else {
+    document.getElementById("rows").innerHTML = list.map(rowHtml).join("");
+  }
 
   document.getElementById("empty").style.display = list.length ? "none":"block";
   document.getElementById("count").textContent = list.length+" of "+rows.length+" shown";
@@ -301,7 +391,10 @@ document.getElementById("head").addEventListener("click", e=>{
   render();
 });
 ["q","cat","tier","site","minscore"].forEach(id=>document.getElementById(id).addEventListener("input", render));
-render();
+const groupCb = document.getElementById("group");
+groupCb.addEventListener("change", ()=>{ groupByCategory = groupCb.checked; document.getElementById("groupToggleWrap").classList.toggle("on", groupByCategory); render(); });
+
+loadRun(0);
 </script>
 </body>
 </html>

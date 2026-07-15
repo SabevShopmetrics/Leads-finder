@@ -18,6 +18,7 @@ import { normalizePlace, dedupe } from './collector.js';
 import { CRITERIA, scoreBusiness, formatCriteria } from './scorer.js';
 import { writeOutputs } from './writer.js';
 import { writeDashboard } from './dashboard.js';
+import { saveRun, loadRecentRuns } from './history.js';
 
 /** Expand each {niche, query} into base + per-district variants to find more. */
 function buildSearchPlan(config) {
@@ -40,20 +41,39 @@ async function main() {
   const plan = buildSearchPlan(config);
 
   console.log(
+    `Depth: ${config.depth} (${config.depthDescription})`
+  );
+  console.log(
     `${config.queries.length} queries` +
       (config.expandDistricts ? ` × ${config.districts.length} districts (+city-wide)` : '') +
       ` = ${plan.length} searches. Cap ${config.maxResultsPerQuery}/search, ` +
       `delay ${config.requestDelayMs}ms, lang=${config.languageCode}, region=${config.regionCode}.`
   );
-  if (config.expandDistricts) {
-    console.log('  (set EXPAND_DISTRICTS=0 to disable geographic expansion / reduce API cost)\n');
-  } else {
-    console.log('');
-  }
+  console.log('  (switch depth with --depth=short|medium|deep, e.g. npm run scout:deep)\n');
 
-  // 1–3. Collect raw places for every plan item.
+  // 1–3. Collect raw places for every plan item. `normalized` lives in this
+  // closure so both a normal finish AND an early stop (quota exhausted,
+  // Ctrl+C) can write out whatever was collected — a run is never fully lost.
   const normalized = [];
   let rawCount = 0;
+  let stopReason = null; // set when we stop before the plan finishes
+
+  let finishing = false;
+  const finishRun = async () => {
+    if (finishing) return; // guard against double-write (SIGINT racing normal completion)
+    finishing = true;
+    await writeResults({ normalized, rawCount, plan, config, stopReason });
+  };
+
+  // Ctrl+C mid-run would otherwise throw away everything collected so far —
+  // save it instead.
+  process.once('SIGINT', () => {
+    console.log('\n\n⚠ Interrupted — saving the results collected so far…');
+    stopReason = stopReason || 'stopped early: interrupted by user (Ctrl+C)';
+    finishRun()
+      .catch((err) => console.error(`✗ Failed to save partial results: ${err.message}`))
+      .finally(() => process.exit(0));
+  });
 
   for (const [i, { niche, query }] of plan.entries()) {
     console.log(`[${i + 1}/${plan.length}] "${query}" (${niche})`);
@@ -63,6 +83,18 @@ async function main() {
       if (places.length === 0) console.log('    · no results.');
       for (const place of places) normalized.push(normalizePlace(place, niche));
     } catch (err) {
+      if (err.quotaExhausted) {
+        // Every remaining query would fail identically until the quota
+        // resets — stop now and save what we already have instead of
+        // grinding through the rest of the plan for nothing.
+        console.warn(`    ✗ ${err.message}`);
+        console.warn(
+          `    ⚠ Daily Places API quota exhausted — stopping early and saving the ` +
+            `${normalized.length} businesses collected so far (${i + 1}/${plan.length} searches run).`
+        );
+        stopReason = 'stopped early: Google Places daily quota exhausted';
+        break;
+      }
       // One bad query shouldn't sink the whole run.
       console.warn(`    ✗ search failed: ${err.message}`);
     }
@@ -72,6 +104,11 @@ async function main() {
     }
   }
 
+  await finishRun();
+}
+
+/** Dedupe, score, sort, write CSV/JSON/dashboard/history, and print the summary. */
+async function writeResults({ normalized, rawCount, plan, config, stopReason }) {
   // 4. Dedupe by place id.
   const deduped = dedupe(normalized);
   console.log(`\nCollected ${rawCount} raw rows → ${deduped.length} unique businesses.`);
@@ -110,14 +147,26 @@ async function main() {
     byCategory,
     criteria: CRITERIA,
     searches: plan.length,
+    depth: config.depth,
+    depthDescription: config.depthDescription,
+    partial: Boolean(stopReason),
+    stopReason,
     generatedAt: new Date().toISOString().replace('T', ' ').slice(0, 16) + ' UTC',
   };
 
   const { csvPath, jsonPath } = await writeOutputs(rows, config.outputDir);
-  const dashboardPath = await writeDashboard(rows, summary, config.outputDir);
+
+  // Save this run permanently (never overwritten) and reload recent runs so
+  // the dashboard can offer a "saved runs" switcher over past results.
+  await saveRun({ rows, summary, outputDir: config.outputDir });
+  const history = await loadRecentRuns(config.outputDir);
+
+  const dashboardPath = await writeDashboard(rows, summary, config.outputDir, history);
 
   // 7. Summary.
   console.log('\n──────── Summary ────────');
+  if (stopReason) console.log(`⚠ Partial run          : ${stopReason}`);
+  console.log(`Depth                 : ${config.depth}`);
   console.log(`Searches run          : ${plan.length}`);
   console.log(`Raw results fetched   : ${rawCount}`);
   console.log(`Unique businesses     : ${rows.length}`);
