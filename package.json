@@ -15,7 +15,8 @@
     "scout": "node src/index.js",
     "scout:short": "node src/index.js --depth=short",
     "scout:medium": "node src/index.js --depth=medium",
-    "scout:deep": "node src/index.js --depth=deep"
+    "scout:deep": "node src/index.js --depth=deep",
+    "rescore": "node src/rescore.js"
   },
   "dependencies": {}
 }

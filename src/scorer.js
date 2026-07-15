@@ -21,16 +21,47 @@ export const CRITERIA = [
 
 // ── Industry categorization by Google primaryType ────────────────────────────
 // First matching group wins (order matters where types overlap).
+//
+// Google Places API (New) returns granular subtypes (e.g. "italian_restaurant",
+// "fast_food_restaurant") rather than just the generic parent ("restaurant") —
+// each list below spells those out explicitly rather than relying on the
+// generic type alone, otherwise real leads silently fall through to "Other"
+// and lose niche-fit score (see HIGH_VALUE_TYPES below).
 const CATEGORY_MAP = [
-  ['Health',                ['dentist', 'dental_clinic', 'doctor', 'hospital', 'medical_lab', 'physiotherapist', 'chiropractor', 'veterinary_care', 'pharmacy', 'drugstore']],
-  ['Real Estate',           ['real_estate_agency']],
-  ['Hospitality',           ['restaurant', 'cafe', 'bar', 'bakery', 'meal_takeaway', 'meal_delivery', 'lodging', 'hotel', 'motel', 'resort_hotel', 'guest_house', 'bed_and_breakfast']],
-  ['Beauty & Wellness',     ['beauty_salon', 'hair_salon', 'spa', 'nail_salon', 'barber_shop', 'wellness_center']],
+  ['Health', [
+    'dentist', 'dental_clinic', 'doctor', 'hospital', 'medical_lab', 'physiotherapist',
+    'chiropractor', 'veterinary_care', 'pharmacy', 'drugstore',
+    'medical_clinic', 'medical_center', 'health', 'skin_care_clinic',
+  ]],
+  ['Real Estate', ['real_estate_agency']],
+  ['Hospitality', [
+    'restaurant', 'cafe', 'bar', 'bakery', 'meal_takeaway', 'meal_delivery',
+    'lodging', 'hotel', 'motel', 'resort_hotel', 'guest_house', 'bed_and_breakfast',
+    'hostel', 'inn', 'cottage', 'private_guest_room', 'extended_stay_hotel',
+    'campground', 'camping_cabin', 'farmstay', 'mobile_home_park', 'rv_park',
+    // Google's granular "Food and Drink" subtypes (Places API Table A).
+    'afghani_restaurant', 'african_restaurant', 'american_restaurant', 'asian_restaurant',
+    'bagel_shop', 'bar_and_grill', 'barbecue_restaurant', 'brazilian_restaurant',
+    'breakfast_restaurant', 'brunch_restaurant', 'buffet_restaurant', 'cafeteria',
+    'candy_store', 'chinese_restaurant', 'chocolate_factory', 'chocolate_shop',
+    'coffee_shop', 'confectionery', 'deli', 'dessert_restaurant', 'dessert_shop',
+    'diner', 'donut_shop', 'fast_food_restaurant', 'fine_dining_restaurant',
+    'food_court', 'french_restaurant', 'greek_restaurant', 'hamburger_restaurant',
+    'ice_cream_shop', 'indian_restaurant', 'indonesian_restaurant', 'italian_restaurant',
+    'japanese_restaurant', 'juice_shop', 'korean_restaurant', 'lebanese_restaurant',
+    'mediterranean_restaurant', 'mexican_restaurant', 'middle_eastern_restaurant',
+    'pizza_restaurant', 'pub', 'ramen_restaurant', 'sandwich_shop', 'seafood_restaurant',
+    'spanish_restaurant', 'steak_house', 'sushi_restaurant', 'tea_house', 'thai_restaurant',
+    'turkish_restaurant', 'ukrainian_restaurant', 'vegan_restaurant', 'vegetarian_restaurant',
+    'vietnamese_restaurant', 'wine_bar', 'bistro', 'sports_bar', 'chicken_restaurant',
+    'fish_and_chips_restaurant', 'family_restaurant', 'european_restaurant',
+  ]],
+  ['Beauty & Wellness', ['beauty_salon', 'hair_salon', 'spa', 'nail_salon', 'barber_shop', 'wellness_center', 'sauna', 'tanning_studio']],
   ['Professional Services', ['lawyer', 'accounting', 'insurance_agency', 'consultant', 'notary_public']],
-  ['Automotive',            ['car_dealer', 'car_repair', 'car_wash', 'auto_parts_store']],
-  ['Fitness',               ['gym', 'fitness_center', 'sports_club']],
-  ['Retail',                ['store', 'clothing_store', 'furniture_store', 'jewelry_store', 'shoe_store', 'electronics_store']],
-  ['Education',             ['school', 'primary_school', 'secondary_school', 'university', 'language_school']],
+  ['Automotive', ['car_dealer', 'car_repair', 'car_wash', 'auto_parts_store']],
+  ['Fitness', ['gym', 'fitness_center', 'sports_club', 'yoga_studio']],
+  ['Retail', ['store', 'clothing_store', 'furniture_store', 'jewelry_store', 'shoe_store', 'electronics_store', 'supermarket', 'shopping_mall', 'market']],
+  ['Education', ['school', 'primary_school', 'secondary_school', 'university', 'language_school']],
 ];
 
 // primaryType values that are a strong fit for SilexBrand's offering.
